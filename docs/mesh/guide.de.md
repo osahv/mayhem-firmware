@@ -221,11 +221,28 @@ gar keine Verbindung, während alles andere gesund aussieht.
 | `OK to MQTT` | ob Übergänge unsere Pakete ins Internet stellen dürfen |
 | `Ignore MQTT pkts` | Pakete aus dem Internet ausblenden |
 | `TX pwr` | Sendeleistung |
+| `Damaged` | was mit beschädigten Paketen geschehen soll |
 
 Zu `TX pwr`: das ist die Sendeverstärkung, eine Zahl von 0 bis 47, keine Leistung. Weder
 `Region` noch `Custom` ist geeicht, und wie viel Watt daraus wird, hat niemand gemessen. Einen
 Grenzwert kann man damit nicht einhalten. Nehmen Sie die kleinste Stufe, mit der die Verbindung
 steht, und senden Sie nicht ohne Antenne.
+
+Zu `Damaged`: Jedes LoRa-Paket führt eine Prüfsumme über seinen Inhalt mit, und eines,
+das sie nicht besteht, hat mindestens ein gekipptes Bit. In sauberer Luft ist das selten,
+in einem belebten Netz alltäglich.
+
+- `text only`, die Voreinstellung: Ein beschädigter Text wird mit `[?]` markiert
+  angezeigt, denn eine Nachricht mit einem falschen Zeichen liest sich immer noch. Alles
+  Übrige wird verworfen, weil es von einer Maschine gelesen wird und nicht von Ihnen:
+  Positionen, Telemetrie, Knotenangaben. Ein solches Paket kommt weder in die Knotenliste
+  noch wird es weitergereicht
+- `drop`: Ein beschädigtes Paket wird ganz verworfen
+- `show all`: alles annehmen, ungeprüft
+
+Ab und zu erscheint im Chat eine Zeile wie `* crc bad 12 of 340`: wie viele Pakete die
+Prüfung nicht bestanden haben, von wie vielen angekommenen. Sie wird bei jeder Einstellung
+ausgegeben, auch bei abgeschalteter Prüfung, damit die Fehlerrate als Zahl ablesbar ist.
 
 Unten steht `Whip 1/4 wave` mit der Viertelwellenlänge für die eingestellte Frequenz. Ein Draht
 dieser Länge auf einer Metallfläche arbeitet spürbar besser als eine Beipack-Antenne für ein

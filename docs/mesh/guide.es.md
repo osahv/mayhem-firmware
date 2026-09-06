@@ -221,11 +221,27 @@ enlace alguno aunque todo lo demás parezca correcto.
 | `OK to MQTT` | si las pasarelas pueden publicar nuestros paquetes en internet |
 | `Ignore MQTT pkts` | ocultar los paquetes llegados por internet |
 | `TX pwr` | potencia de transmisión |
+| `Damaged` | qué hacer con los paquetes dañados |
 
 Sobre `TX pwr`: es la ganancia de transmisión, un número de 0 a 47, no una potencia. Ni
 `Region` ni `Custom` están calibrados y nadie ha medido a cuántos vatios equivalen, así que con
 ellos no se puede asegurar un límite. Use el ajuste más bajo con el que haya enlace y no
 transmita sin antena.
+
+Sobre `Damaged`: cada paquete LoRa lleva una suma de comprobación de su contenido, y el
+que no la supera tiene al menos un bit cambiado. En aire limpio eso es raro; en una red
+poblada es corriente.
+
+- `text only`, la opción por defecto: un texto dañado se muestra con la marca `[?]`,
+  porque un mensaje con una letra equivocada aún se lee. Lo demás se descarta, porque lo
+  lee una máquina y no usted: posiciones, telemetría, datos del nodo. Un paquete así ni
+  entra en la lista de nodos ni se reenvía
+- `drop`: el paquete dañado se descarta entero
+- `show all`: aceptarlo todo, sin comprobar
+
+De vez en cuando aparece en el chat una línea como `* crc bad 12 of 340`: cuántos paquetes
+no pasaron la comprobación de cuántos llegaron. Se imprime con cualquier ajuste, incluso
+con la comprobación apagada, para que la tasa de error se pueda leer como un número.
 
 Abajo, `Whip 1/4 wave` da la longitud de un cuarto de onda para la frecuencia actual. Un hilo
 de esa medida sobre una base metálica funciona bastante mejor que una antena del juego cortada

@@ -224,11 +224,27 @@ no link at all while everything else still looks healthy.
 | `OK to MQTT` | whether gateways may publish our packets to the internet |
 | `Ignore MQTT pkts` | hide packets that arrived through the internet |
 | `TX pwr` | transmit power |
+| `Damaged` | what to do with damaged packets |
 
 About `TX pwr`: it is the transmit gain, a number from 0 to 47, not a power. Neither `Region`
 nor `Custom` is calibrated and nobody has measured what either comes to in watts, so they cannot
 be used to stay inside a limit. Use the lowest setting that gets through, and do not transmit
 without an antenna.
+
+About `Damaged`: every LoRa packet carries a checksum over its contents, and one that
+fails it has at least one flipped bit. In clean air that is rare; in a populated network
+it is ordinary.
+
+- `text only`, the default: a damaged text is shown with a `[?]` mark, because a message
+  with one wrong character still reads. Everything else is thrown away, because it is
+  read by a machine rather than by you: positions, telemetry, node details. Such a packet
+  neither enters the node list nor is passed along
+- `drop`: a damaged packet is discarded outright
+- `show all`: take everything, unchecked
+
+Now and then a line like `* crc bad 12 of 340` appears in the chat: how many packets
+failed the check out of how many arrived. It is printed whatever the setting says,
+including with the checking off, so the error rate can be read as a number.
 
 At the bottom, `Whip 1/4 wave` gives the quarter wave length for the current frequency. A wire
 of that length on a metal base works noticeably better than a kit antenna cut for another band.
