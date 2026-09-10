@@ -226,7 +226,7 @@ no link at all while everything else still looks healthy.
 | `TX pwr` | transmit power |
 | `Damaged` | what to do with damaged packets |
 
-About `TX pwr`: it is the transmit gain, a number from 0 to 47, not a power. Neither `Region`
+About `TX pwr`: it is the transmit gain, a number from 0 to 47 (0 to 31 on a HackRF Pro), not a power. Neither `Region`
 nor `Custom` is calibrated and nobody has measured what either comes to in watts, so they cannot
 be used to stay inside a limit. Use the lowest setting that gets through, and do not transmit
 without an antenna.

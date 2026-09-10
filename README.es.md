@@ -18,7 +18,7 @@ también lo responde: en la mayoría de países transmitir fuera de las bandas l
 prohibido, y dentro de ellas hay límites de potencia y de ocupación del canal.
 
 No hemos medido la potencia. El campo `TX pwr` fija la ganancia de transmisión, un número de 0 a
-47, no una potencia. Ni `Region` ni `Custom` están calibrados, así que con ellos no se puede
+47 (de 0 a 31 en el HackRF Pro), no una potencia. Ni `Region` ni `Custom` están calibrados, así que con ellos no se puede
 asegurar un límite. Use el ajuste más bajo con el que haya enlace, no transmita sin antena y no
 mantenga la transmisión continua. Si no está seguro de que la banda esté libre donde vive,
 active `RX only` y escuche.
@@ -34,7 +34,7 @@ serie.
 
 ## Qué tiene de interesante
 
-El HackRF no lleva dentro nada que entienda LoRa. Entrega un flujo de muestras y recibe otro
+El HackRF no lleva dentro nada que entienda LoRa®. Entrega un flujo de muestras y recibe otro
 igual. Por eso toda la capa física está escrita de nuevo y corre en el segundo núcleo: busca el
 preámbulo, sincroniza en tiempo y frecuencia, deshace el chirp contra una referencia, aplica la
 transformada de Fourier, el código Gray, el entrelazado, Hamming y el blanqueo. En ambos
@@ -78,6 +78,10 @@ Heltec V4 de serie: mensajes, canales cifrados, telemetría, posiciones, la hora
 vecino, trazado de ruta y las peticiones que la aplicación de móvil de Meshtastic hace a un
 nodo.
 
+Desde `mesh-test-2` el receptor comprueba la suma de control de cada paquete. Antes los
+paquetes dañados se tomaban por buenos, y en una red con tráfico eso daba nombres deformados y
+posiciones en lugares al azar. Qué hacer con los dañados se elige en **Setup → Radio → Damaged**.
+
 Los detalles, con la tabla de modos, están en la [guía](docs/mesh/guide.es.md).
 
 ## Qué no funciona
@@ -88,10 +92,14 @@ Una lista honesta, para que no busque el fallo en sus manos:
   tiempo disponible en este aparato
 - **Weather y SubGhzD no arrancan** y dicen `NoImg`. Sus imágenes son mayores que la memoria que
   queda cuando ha llegado hasta ellas por el menú
+- **Varias páginas de ajustes seguidas** pueden acabar en una parada `Out of Memory`: cada
+  página toma memoria la primera vez que se abre y no la devuelve hasta reiniciar. Se arregla
+  apagando y encendiendo
 - **Las contraseñas de los canales propios** solo sirven entre PortaPack. Para hablar con un
   nodo de serie escriba su clave real, 32 caracteres, en lugar de la contraseña
 - **El nivel de señal no está calibrado.** Sirve para comparar nodos entre sí, pero no son dBm
   reales
+- **No probado en un HackRF Pro**: no tengo ninguno
 
 ## Advertencia
 
@@ -145,5 +153,7 @@ Toda la base pertenece al proyecto
 añadido una aplicación.
 
 Usa el protocolo Meshtastic. Sin relación con Meshtastic LLC ni aprobado por ellos.
+
+LoRa® es una marca de Semtech Corporation. Sin relación con Semtech ni aprobado por ellos.
 
 La licencia se hereda de Mayhem: GPL-2.0-or-later.

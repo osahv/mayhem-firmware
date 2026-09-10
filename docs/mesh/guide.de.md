@@ -223,7 +223,7 @@ gar keine Verbindung, während alles andere gesund aussieht.
 | `TX pwr` | Sendeleistung |
 | `Damaged` | was mit beschädigten Paketen geschehen soll |
 
-Zu `TX pwr`: das ist die Sendeverstärkung, eine Zahl von 0 bis 47, keine Leistung. Weder
+Zu `TX pwr`: das ist die Sendeverstärkung, eine Zahl von 0 bis 47 (beim HackRF Pro 0 bis 31), keine Leistung. Weder
 `Region` noch `Custom` ist geeicht, und wie viel Watt daraus wird, hat niemand gemessen. Einen
 Grenzwert kann man damit nicht einhalten. Nehmen Sie die kleinste Stufe, mit der die Verbindung
 steht, und senden Sie nicht ohne Antenne.

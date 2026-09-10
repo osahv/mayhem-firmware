@@ -223,7 +223,7 @@ enlace alguno aunque todo lo demás parezca correcto.
 | `TX pwr` | potencia de transmisión |
 | `Damaged` | qué hacer con los paquetes dañados |
 
-Sobre `TX pwr`: es la ganancia de transmisión, un número de 0 a 47, no una potencia. Ni
+Sobre `TX pwr`: es la ganancia de transmisión, un número de 0 a 47 (de 0 a 31 en el HackRF Pro), no una potencia. Ni
 `Region` ni `Custom` están calibrados y nadie ha medido a cuántos vatios equivalen, así que con
 ellos no se puede asegurar un límite. Use el ajuste más bajo con el que haya enlace y no
 transmita sin antena.

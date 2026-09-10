@@ -18,7 +18,7 @@ Sie, und Sie verantworten es auch: in den meisten Ländern ist das Senden außer
 lizenzfreien Bänder verboten, und innerhalb davon nach Leistung und Kanalbelegung begrenzt.
 
 Die Leistung haben wir nicht gemessen. Das Feld `TX pwr` stellt die Sendeverstärkung ein, eine
-Zahl von 0 bis 47, keine Leistung. Weder `Region` noch `Custom` ist geeicht, damit lässt sich
+Zahl von 0 bis 47 (beim HackRF Pro 0 bis 31), keine Leistung. Weder `Region` noch `Custom` ist geeicht, damit lässt sich
 kein Grenzwert einhalten. Nehmen Sie die kleinste Stufe, mit der es reicht, senden Sie nicht
 ohne Antenne und nicht im Dauerbetrieb. Sind Sie unsicher, ob das Band bei Ihnen frei ist,
 schalten Sie `RX only` ein und hören Sie zu.
@@ -33,7 +33,7 @@ Die App umgeht nichts: dieselben Frequenzen und dasselbe Protokoll wie Meshtasti
 
 ## Was hier interessant ist
 
-Im HackRF steckt nichts, was LoRa verstünde. Er liefert einen Strom von Abtastwerten und nimmt
+Im HackRF steckt nichts, was LoRa® verstünde. Er liefert einen Strom von Abtastwerten und nimmt
 ebensolchen zurück. Deshalb ist die gesamte Bitübertragungsschicht neu geschrieben und läuft
 auf dem zweiten Kern: Präambelsuche, Zeit- und Frequenzsynchronisation, Entzerrung gegen einen
 Referenz-Chirp, Fourier-Transformation, Gray-Kodierung, Verschachtelung, Hamming, Weißung. In
@@ -78,6 +78,11 @@ Serienfirmware geprüft: Nachrichten, verschlüsselte Kanäle, Telemetrie, Posit
 Nachbarn, Routenverfolgung und die Anfragen, die die Meshtastic-Telefon-App an einen Knoten
 stellt.
 
+Ab `mesh-test-2` prüft der Empfänger die Prüfsumme jedes Pakets. Vorher wurden beschädigte
+Pakete als heil angenommen, und in einem belebten Netz ergab das verstümmelte Namen und
+Positionen an zufälligen Orten. Was mit beschädigten geschieht, wählt man unter
+**Setup → Radio → Damaged**.
+
 Einzelheiten samt Tabelle der Modemarten stehen in der [Anleitung](docs/mesh/guide.de.md).
 
 ## Was nicht funktioniert
@@ -88,10 +93,14 @@ Eine ehrliche Liste, damit Sie den Fehler nicht bei sich suchen:
   dieser Hardware nicht in die verfügbare Zeit
 - **Weather und SubGhzD starten nicht** und melden `NoImg`. Ihre Abbilder sind größer als der
   Speicher, der übrig ist, wenn man sich zu ihnen durchgeklickt hat
+- **Mehrere Einstellungsseiten nacheinander** können mit einem `Out of Memory`-Halt enden: jede
+  Seite nimmt beim ersten Öffnen Speicher und gibt ihn bis zum Neustart nicht zurück. Aus- und
+  Einschalten hilft
 - **Kennwörter eigener Kanäle** vertragen sich nur zwischen PortaPacks. Für ein Seriengerät
   geben Sie statt des Kennworts dessen echten Schlüssel ein, 32 Zeichen
 - **Der Pegel ist nicht geeicht.** Gut zum Vergleich der Knoten untereinander, aber kein echtes
   dBm
+- **Auf einem HackRF Pro nicht ausprobiert**: ich habe keinen
 
 ## Warnung
 
@@ -149,6 +158,9 @@ Die gesamte Grundlage gehört dem Projekt
 eine App hinzugefügt.
 
 Verwendet das Meshtastic-Protokoll. Nicht mit Meshtastic LLC verbunden und von dort nicht
+freigegeben.
+
+LoRa® ist eine Marke der Semtech Corporation. Nicht mit Semtech verbunden und von dort nicht
 freigegeben.
 
 Die Lizenz stammt von Mayhem: GPL-2.0-or-later.

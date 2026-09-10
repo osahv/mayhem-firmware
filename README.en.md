@@ -18,7 +18,7 @@ decision and your responsibility: in most countries transmitting outside the lic
 is prohibited, and inside them it is limited by power and by how long you hold the channel.
 
 We have not measured the power. The `TX pwr` field sets the transmit gain, a number from 0 to
-47, not a power. Neither `Region` nor `Custom` is calibrated, so neither can be used to stay
+47 (0 to 31 on a HackRF Pro), not a power. Neither `Region` nor `Custom` is calibrated, so neither can be used to stay
 inside a limit. Use the lowest setting that gets through, do not transmit without an antenna,
 and do not hold a continuous transmission. If you are not sure the band is open where you are,
 turn on `RX only` and listen.
@@ -33,7 +33,7 @@ The app bypasses nothing: same frequencies and same protocol as stock Meshtastic
 
 ## What is interesting here
 
-The HackRF has nothing in it that understands LoRa. It hands over a stream of samples and takes
+The HackRF has nothing in it that understands LoRa®. It hands over a stream of samples and takes
 one back. So the whole physical layer is written from scratch and runs on the second core:
 preamble detection, time and frequency synchronisation, dechirping against a reference, the
 Fourier transform, Gray coding, interleaving, Hamming, whitening. In both directions, inside
@@ -75,6 +75,10 @@ Seven of the nine modem presets, in both directions. Confirmed on the air agains
 Heltec V4: messages, encrypted channels, telemetry, positions, the clock taken from a
 neighbour, traceroute, and the requests the Meshtastic phone app makes of a node.
 
+From `mesh-test-2` on, the receiver checks the CRC of every packet. Before that, damaged packets
+were taken as sound, and in a busy mesh that meant mangled names and positions in random places.
+What happens to a damaged one is chosen in **Setup → Radio → Damaged**.
+
 Details, including the preset table, are in the [guide](docs/mesh/guide.en.md).
 
 ## What does not work
@@ -85,10 +89,14 @@ An honest list, so you do not go looking for the fault in your own hands:
   the time budget on this hardware
 - **Weather and SubGhzD do not start** and report `NoImg`. Their images are larger than the
   memory left by the time you have navigated to them
+- **Several settings pages in one session** can end in an `Out of Memory` stop: each page
+  takes memory the first time it opens and does not give it back until a restart. Power
+  cycling clears it
 - **Passphrases for your own channels** work between PortaPacks only. To talk to a stock node
   on your own channel, enter that node's real key, 32 characters, instead of a passphrase
 - **The signal level is not calibrated.** Good for comparing nodes with each other, but it is
   not real dBm
+- **Not tried on a HackRF Pro**: I do not have one
 
 ## Warning
 
@@ -140,5 +148,7 @@ The whole base belongs to the [Mayhem](https://github.com/portapack-mayhem/mayhe
 project and its contributors. One app has been added here.
 
 Uses the Meshtastic protocol. Not affiliated with or endorsed by Meshtastic LLC.
+
+LoRa® is a trademark of Semtech Corporation. Not affiliated with or endorsed by Semtech.
 
 Licence is inherited from Mayhem: GPL-2.0-or-later.
