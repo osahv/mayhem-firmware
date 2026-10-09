@@ -4362,7 +4362,8 @@ void MeshtasticChannelsView::show_qr() {
         return;
     }
     const int i = (sel.kind == Row::Channel) ? sel.slot : -1;
-    uint8_t key[16];
+    uint8_t key[32];
+    size_t key_len = 0;
     std::string l1, l2;
 
     // Everything the far end needs to end up on our air, not just on our channel.
@@ -4384,7 +4385,7 @@ void MeshtasticChannelsView::show_qr() {
     const uint8_t default_psk = 1;  // "the well known public key", as the phone encodes it
     if (i >= 0 && enabled_[i] && !names_[i].empty()) {
         const bool has_key = !keys_[i].empty();
-        if (has_key) MeshtasticView::derive_channel_key(keys_[i], key);
+        if (has_key) key_len = MeshtasticView::derive_channel_key(keys_[i], key);
         // A custom channel of ours is a SECONDARY one: it shares the primary's air and
         // is told apart by the channel hash. So the primary rides along, first, or the
         // far end installs ours as its primary instead of beside it.
@@ -4393,7 +4394,7 @@ void MeshtasticChannelsView::show_qr() {
         sh.primary_psk_len = 1;
         sh.name = names_[i].c_str();
         sh.psk = key;
-        sh.psk_len = has_key ? sizeof(key) : 0;
+        sh.psk_len = has_key ? key_len : 0;
         qr_url_ = meshtastic::channel_share_url(sh);
         l1 = "Channel " + names_[i];
         l2 = std::string(meshtastic::PRESET_CHANNEL_NAMES[preset_idx_]) +
@@ -6904,22 +6905,31 @@ void MeshtasticView::broadcast_telemetry() {
     }
 }
 
-void MeshtasticView::derive_channel_key(const std::string& text, uint8_t out[16]) {
-    bool all_hex = (text.size() == 32);
-    for (size_t i = 0; all_hex && i < 32; i++)
-        if (hex_digit(text[i]) < 0) all_hex = false;
-    if (all_hex) {  // exact 32 hex -> raw AES-128 key
+size_t MeshtasticView::derive_channel_key(const std::string& text, uint8_t out[32]) {
+    const auto all_hex = [&](size_t n) {
+        if (text.size() != n) return false;
+        for (size_t i = 0; i < n; i++)
+            if (hex_digit(text[i]) < 0) return false;
+        return true;
+    };
+    if (all_hex(64)) {  // exact 64 hex -> raw AES-256 key (stock nodes with a 32 byte PSK)
+        for (int i = 0; i < 32; i++)
+            out[i] = static_cast<uint8_t>((hex_digit(text[2 * i]) << 4) | hex_digit(text[2 * i + 1]));
+        return 32;
+    }
+    if (all_hex(32)) {  // exact 32 hex -> raw AES-128 key
         for (int i = 0; i < 16; i++)
             out[i] = static_cast<uint8_t>((hex_digit(text[2 * i]) << 4) | hex_digit(text[2 * i + 1]));
-        return;
+        return 16;
     }
     for (int i = 0; i < 16; i++) out[i] = 0;  // else derive from passphrase
     if (text.empty()) {
         out[0] = 1;
-        return;
+        return 16;
     }
     for (size_t i = 0; i < 16; i++)
         out[i] = static_cast<uint8_t>(text[i % text.size()] ^ (0x9E * (i + 1)));
+    return 16;
 }
 
 void MeshtasticView::apply_channels() {
@@ -6940,11 +6950,11 @@ void MeshtasticView::apply_channels() {
     for (int i = 0; i < MeshSettings::NUM_CUSTOM; i++) {
         const bool on = cfg_.ch_enabled[i] && !cfg_.ch_name[i].empty();
         if (on) {
-            uint8_t key[16];
-            derive_channel_key(cfg_.ch_key[i], key);
+            uint8_t key[32];
+            const size_t klen = derive_channel_key(cfg_.ch_key[i], key);
             router_.set_channel(i + 1,
-                                meshtastic::channel_hash(cfg_.ch_name[i].c_str(), key, 16),
-                                key, 16, true);
+                                meshtastic::channel_hash(cfg_.ch_name[i].c_str(), key, klen),
+                                key, klen, true);
         } else {
             router_.set_channel(i + 1, 0, nullptr, 0, false);
         }

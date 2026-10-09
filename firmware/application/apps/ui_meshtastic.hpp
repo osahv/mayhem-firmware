@@ -2072,7 +2072,7 @@ class MeshtasticView : public View {
     explicit MeshtasticView(NavigationView& nav);
     // Passphrase (or 32 hex characters, taken as a raw AES-128 key) -> channel key.
     // Public because the conversations view builds a channel QR code from it.
-    static void derive_channel_key(const std::string& text, uint8_t out[16]);
+    static size_t derive_channel_key(const std::string& text, uint8_t out[32]);  // returns 16 or 32 (bytes)
     ~MeshtasticView();
 
     void focus() override;
