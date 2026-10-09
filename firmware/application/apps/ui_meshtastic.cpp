@@ -3175,6 +3175,18 @@ MeshtasticNodesView::MeshtasticNodesView(NavigationView& nav,
     button_sort_.on_select = [this](Button&) { cycle_sort(); };
     update_sort_caption();
     button_all_.on_select = [this](Button&) { nav_.push<MeshtasticSeenView>(node_db_, now_ticks_); };
+    // Up from a button returns to the list; Down stays on the button row; Left/Right move along the row as usual.
+    const auto row_nav = [this](Button&, KeyEvent k) {
+        if (k == KeyEvent::Up) {
+            focus();
+            return true;
+        }
+        return k == KeyEvent::Down;
+    };
+    button_clear_.on_dir = row_nav;
+    button_sort_.on_dir = row_nav;
+    button_all_.on_dir = row_nav;
+    button_setup_.on_dir = row_nav;
     button_setup_.on_select = [this](Button&) {
         nav_.push<MeshtasticNodesConfigView>(offline_after_s_, forget_after_min_);
     };
@@ -3316,6 +3328,12 @@ bool MeshtasticNodesView::on_key(const KeyEvent key) {
     // encoder's job; Select still opens whatever the encoder left highlighted.
     if (key == KeyEvent::Select) {
         open_selected();
+        return true;
+    }
+    // The list covers the button row (same rectangle), so the focus manager never finds the buttons "below" it: jump there
+    // explicitly. Up on any button comes back here (see the constructor).
+    if (key == KeyEvent::Down) {
+        button_sort_.focus();
         return true;
     }
     return false;
