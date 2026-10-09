@@ -1307,6 +1307,49 @@ class MeshtasticNodesConfigView : public View {
         {{0, 80}, "0 = keep nodes for ever.", Theme::getInstance()->fg_dark->foreground}};
 };
 
+// ---- Nodes: everything heard, in memory and on the card ----------------------------------------------
+
+// The node list holds the freshest MAX_NODES nodes; a node that was pushed out is parked on the SD card
+// (/LOGS/mesh_seen.bin). This screen shows both: the nodes in memory first, then the ones from the card, newest first.
+class MeshtasticSeenView : public View {
+   public:
+    MeshtasticSeenView(NavigationView& nav, meshtastic::NodeDB& node_db, uint32_t now_ticks);
+    void focus() override;
+    void paint(Painter& painter) override;
+    bool on_encoder(const EncoderEvent delta) override;
+    bool on_key(const KeyEvent key) override;
+    std::string title() const override { return "All heard"; }
+
+   private:
+    static constexpr int HDR_H = 16;
+    static constexpr int ROW_H = 16;
+    static constexpr int VISIBLE = 14;
+
+    struct Row {
+        uint32_t id{0};
+        uint32_t age_s{0xFFFFFFFFu};  // 0xFFFFFFFF = unknown (clock was not set)
+        int8_t rssi{0};
+        char name[41]{};
+    };
+
+    NavigationView& nav_;
+    meshtastic::NodeDB& node_db_;
+    uint32_t now_ticks_;
+    uint32_t now_unix_;
+    size_t total_{0};  // nodes in memory plus the ones on the card that are not in memory
+    size_t scroll_{0};
+    Row rows_[VISIBLE]{};
+    uint8_t rows_n_{0};
+    // state of the card pass (see visit_cb)
+    bool counting_{false};
+    size_t k_{0};
+
+    static bool visit_cb(const meshtastic::SeenRecord& rec, void* self);
+    void count_all();
+    void refresh_rows();
+    void scroll_by(int delta);
+};
+
 // ---- Tab: Nodes  (index 1) -------------------------------------------------
 
 class MeshtasticNodesView : public View {
@@ -1385,12 +1428,14 @@ class MeshtasticNodesView : public View {
 
    private:
     // Full width, evenly split, with a hair of a gap so they read as three keys.
-    Button button_clear_{{0, BOT_Y, 78, BOT_H}, "Clear"};
+    Button button_clear_{{0, BOT_Y, 57, BOT_H}, "Clear"};
     // Was "Refresh", which did nothing the list was not already doing for itself.
     // Sorting was only reachable by tapping a header title - discoverable by accident
     // at best - so the button now carries it, and says which way round it is.
-    Button button_sort_{{81, BOT_Y, 78, BOT_H}, "Age v"};
-    Button button_setup_{{162, BOT_Y, 78, BOT_H}, "Setup"};
+    Button button_sort_{{60, BOT_Y, 57, BOT_H}, "Age v"};
+    // Every node heard, including the ones the table had no room for (see MeshtasticSeenView).
+    Button button_all_{{120, BOT_Y, 57, BOT_H}, "All"};
+    Button button_setup_{{180, BOT_Y, 60, BOT_H}, "Setup"};
 };
 
 // ---- Tab: Map  (index 2) ---------------------------------------------------

@@ -6,8 +6,11 @@
  */
 
 #include "mesh_nodedb.hpp"
+#include "ch.h"
+#include "file.hpp"
 #include <cstring>
 #include <algorithm>
+#include <new>
 
 namespace meshtastic {
 
@@ -56,6 +59,7 @@ NodeEntry* NodeDB::insert(uint32_t node_id) {
         if (nodes_[i].last_seen_uptime < oldest->last_seen_uptime)
             oldest = &nodes_[i];
     }
+    if (oldest->active && oldest->node_id) queue_evicted(*oldest);
     *oldest = {};
     oldest->node_id = node_id;
     oldest->active = true;
@@ -210,6 +214,125 @@ size_t NodeDB::active_count() const {
         if (nodes_[i].active) n++;
     }
     return n;
+}
+
+SeenRecord NodeDB::make_record(const NodeEntry& e, uint32_t unix_now, uint32_t ticks_now) {
+    SeenRecord r{};
+    r.node_id = e.node_id;
+    if (unix_now && e.last_seen_uptime && ticks_now >= e.last_seen_uptime) {
+        const uint32_t age_s = (ticks_now - e.last_seen_uptime) / 60;  // ~60 Hz ticks
+        r.last_seen_unix = (unix_now > age_s) ? unix_now - age_s : 0;
+    }
+    r.rssi = e.last_rssi;
+    r.snr_q4 = e.last_snr.raw;
+    r.hw_model = e.hw_model;
+    r.role = e.role;
+    r.hops = e.hop_count;
+    r.flags = e.has_pubkey ? 1 : 0;
+    memcpy(r.short_name, e.short_name, sizeof(r.short_name));
+    memcpy(r.long_name, e.long_name, sizeof(r.long_name));
+    return r;
+}
+
+void NodeDB::queue_evicted(const NodeEntry& e) {
+    if (pending_n_ >= 2) {  // the owner is behind: drop the older of the two parked entries
+        pending_[0] = pending_[1];
+        pending_n_ = 1;
+    }
+    pending_[pending_n_++] = make_record(e, clock_unix_, clock_ticks_);
+}
+
+bool NodeDB::take_evicted(SeenRecord& out) {
+    if (!pending_n_) return false;
+    out = pending_[0];
+    pending_[0] = pending_[1];
+    pending_n_--;
+    return true;
+}
+
+// ---- the card side -------------------------------------------------------------------------
+static const char16_t* const SEEN_PATH = u"/LOGS/mesh_seen.bin";
+
+// A File without operator new (see core_control.cpp): null when the heap has no room, and the caller gives up.
+static File* seen_open(bool write) {
+    void* const mem = chHeapAlloc(0x0, sizeof(File));
+    if (!mem) return nullptr;
+    File* const f = new (mem) File();
+    // Optional<Error> is truthy when it failed; read/write and create when writing.
+    if (f->open(std::filesystem::path{SEEN_PATH}, !write, write)) {
+        f->~File();
+        chHeapFree(mem);
+        return nullptr;
+    }
+    return f;
+}
+
+static void seen_close(File* f) {
+    f->~File();
+    chHeapFree(f);
+}
+
+size_t seen_count() {
+    File* const f = seen_open(false);
+    if (!f) return 0;
+    size_t n = f->size() / sizeof(SeenRecord);
+    seen_close(f);
+    return n > SEEN_MAX ? SEEN_MAX : n;
+}
+
+bool seen_read(size_t index, SeenRecord& out) {
+    File* const f = seen_open(false);
+    if (!f) return false;
+    bool ok = false;
+    if (index < f->size() / sizeof(SeenRecord) && f->seek(index * sizeof(SeenRecord))) {
+        const auto r = f->read(&out, sizeof(SeenRecord));
+        ok = r && *r == sizeof(SeenRecord);
+    }
+    seen_close(f);
+    return ok;
+}
+
+void seen_for_each_newest_first(SeenVisit fn, void* ctx) {
+    File* const f = seen_open(false);
+    if (!f) return;
+    const size_t n = f->size() / sizeof(SeenRecord);
+    SeenRecord cur;
+    for (size_t i = (n > SEEN_MAX ? SEEN_MAX : n); i-- > 0;) {
+        if (!f->seek(i * sizeof(SeenRecord))) break;
+        const auto r = f->read(&cur, sizeof(cur));
+        if (!r || *r != sizeof(cur)) break;
+        if (!fn(cur, ctx)) break;
+    }
+    seen_close(f);
+}
+
+bool seen_put(const SeenRecord& rec) {
+    File* const f = seen_open(true);
+    if (!f) return false;
+    const size_t n = f->size() / sizeof(SeenRecord);
+    size_t target = n, oldest = 0;
+    uint32_t oldest_t = 0xFFFFFFFFu;
+    SeenRecord cur;
+    for (size_t i = 0; i < n && i < SEEN_MAX; i++) {
+        const auto r = f->read(&cur, sizeof(cur));
+        if (!r || *r != sizeof(cur)) break;
+        if (cur.node_id == rec.node_id) {
+            target = i;
+            break;
+        }
+        if (cur.last_seen_unix < oldest_t) {
+            oldest_t = cur.last_seen_unix;
+            oldest = i;
+        }
+    }
+    if (target >= SEEN_MAX) target = oldest;  // full: the record heard longest ago makes room
+    bool ok = false;
+    if (f->seek(target * sizeof(SeenRecord))) {
+        const auto w = f->write(&rec, sizeof(rec));
+        ok = w && *w == sizeof(rec);
+    }
+    seen_close(f);
+    return ok;
 }
 
 }  // namespace meshtastic

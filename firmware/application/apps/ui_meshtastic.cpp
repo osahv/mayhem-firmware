@@ -212,6 +212,20 @@ void utf8_encode(uint32_t cp, std::string& out) {
     }
 }
 
+// The first `cols` characters of a UTF-8 string (one column per character, not per byte), padded with spaces to exactly
+// `cols`. Names are cut by characters: a Cyrillic letter is two bytes and must never be split.
+std::string utf8_cols(const std::string& s, size_t cols) {
+    std::string out;
+    size_t i = 0, n = 0, start = 0;
+    uint32_t cp;
+    while (n < cols && (start = i, utf8_next(s, i, cp))) {
+        out.append(s, start, i - start);
+        ++n;
+    }
+    out.append(cols - n, ' ');
+    return out;
+}
+
 // Common emoji -> short ASCII token. nullptr = not mapped (-> placeholder). Color
 // emoji is impossible (1bpp font, 2-colour glyph draw), so tokens are the sane
 // substitute for a text chat.
@@ -3148,7 +3162,7 @@ MeshtasticNodesView::MeshtasticNodesView(NavigationView& nav,
                                          NodeDB& node_db,
                                          Rect parent_rect)
     : View(parent_rect), nav_(nav), node_db_(node_db) {
-    add_children({&button_clear_, &button_sort_, &button_setup_});
+    add_children({&button_clear_, &button_sort_, &button_all_, &button_setup_});
     // The list itself also takes focus so the encoder / D-pad move the selection and
     // Select opens the node detail.
     set_focusable(true);
@@ -3160,6 +3174,7 @@ MeshtasticNodesView::MeshtasticNodesView(NavigationView& nav,
     };
     button_sort_.on_select = [this](Button&) { cycle_sort(); };
     update_sort_caption();
+    button_all_.on_select = [this](Button&) { nav_.push<MeshtasticSeenView>(node_db_, now_ticks_); };
     button_setup_.on_select = [this](Button&) {
         nav_.push<MeshtasticNodesConfigView>(offline_after_s_, forget_after_min_);
     };
@@ -3383,13 +3398,12 @@ void MeshtasticNodesView::paint(Painter& painter) {
                                            : (e->short_name[0] ? std::string(e->short_name) : std::string());
         // Fourteen characters, not nine: the two number columns were sitting well
         // short of the right edge, and a name is the thing you actually read.
-        name = name.substr(0, 14);
-        name.resize(14, ' ');
+        // Cut by characters and drawn through the glyph table, so Cyrillic names come out as letters.
         std::string sig = (e->last_rssi != 0) ? to_string_dec_int(e->last_rssi) : "--";
         sig.resize(4, ' ');
         painter.draw_string({x0, y}, st, id);
-        painter.draw_string({x0 + 5 * 8, y}, st,
-                            name + " " + sig + " " + fmt_age(e->last_seen_uptime));
+        draw_utf8({x0 + 5 * 8, y}, utf8_cols(name, 14), st.foreground, st.background);
+        painter.draw_string({x0 + 20 * 8, y}, st, sig + " " + fmt_age(e->last_seen_uptime));
         // The node's colour as a stripe down the right edge - the same mark its
         // messages carry in the chat. Beside the text rather than in it, so a dark
         // colour never costs legibility.
@@ -3414,6 +3428,150 @@ void MeshtasticNodesView::refresh() {
     if (now_ticks_ - last_refresh_tick_ < 15) return;
     last_refresh_tick_ = now_ticks_;
     set_dirty();
+}
+
+// ============================================================================
+// MeshtasticSeenView
+// ============================================================================
+
+MeshtasticSeenView::MeshtasticSeenView(NavigationView& nav, NodeDB& node_db, uint32_t now_ticks)
+    : nav_(nav), node_db_(node_db), now_ticks_(now_ticks), now_unix_(now_unix()) {
+    set_focusable(true);
+    count_all();
+    refresh_rows();
+}
+
+void MeshtasticSeenView::focus() {
+    View::focus();
+}
+
+// One record of the card pass. Records of nodes that are in memory are skipped: the memory copy is the fresh one.
+bool MeshtasticSeenView::visit_cb(const SeenRecord& rec, void* self) {
+    auto* v = static_cast<MeshtasticSeenView*>(self);
+    if (v->node_db_.find(rec.node_id)) return true;
+    if (v->counting_) {
+        v->total_++;
+        return true;
+    }
+    if (v->k_ >= v->scroll_ && v->rows_n_ < VISIBLE) {
+        Row& r = v->rows_[v->rows_n_++];
+        r.id = rec.node_id;
+        r.rssi = rec.rssi;
+        r.age_s = (v->now_unix_ && rec.last_seen_unix && v->now_unix_ >= rec.last_seen_unix)
+                      ? v->now_unix_ - rec.last_seen_unix
+                      : 0xFFFFFFFFu;
+        const char* nm = rec.long_name[0] ? rec.long_name : rec.short_name;
+        strncpy(r.name, nm, sizeof(r.name) - 1);
+        r.name[sizeof(r.name) - 1] = 0;
+    }
+    v->k_++;
+    return v->rows_n_ < VISIBLE;
+}
+
+void MeshtasticSeenView::count_all() {
+    total_ = 0;
+    for (size_t i = 0; i < node_db_.count(); i++) {
+        const NodeEntry* e = node_db_.at(i);
+        if (e && e->active) total_++;
+    }
+    counting_ = true;
+    seen_for_each_newest_first(&MeshtasticSeenView::visit_cb, this);
+    counting_ = false;
+}
+
+void MeshtasticSeenView::refresh_rows() {
+    rows_n_ = 0;
+    k_ = 0;
+    // Memory first, newest heard first.
+    uint8_t idx[meshtastic::MAX_NODES];
+    size_t n = 0;
+    for (size_t i = 0; i < node_db_.count() && n < meshtastic::MAX_NODES; i++) {
+        const NodeEntry* e = node_db_.at(i);
+        if (!e || !e->active) continue;
+        size_t j = n++;
+        while (j > 0 && node_db_.at(idx[j - 1])->last_seen_uptime < e->last_seen_uptime) {
+            idx[j] = idx[j - 1];
+            j--;
+        }
+        idx[j] = static_cast<uint8_t>(i);
+    }
+    for (size_t m = 0; m < n && rows_n_ < VISIBLE; m++) {
+        const NodeEntry* e = node_db_.at(idx[m]);
+        if (k_++ < scroll_) continue;
+        Row& r = rows_[rows_n_++];
+        r.id = e->node_id;
+        r.rssi = e->last_rssi;
+        r.age_s = (e->last_seen_uptime && now_ticks_ >= e->last_seen_uptime)
+                      ? (now_ticks_ - e->last_seen_uptime) / 60
+                      : 0xFFFFFFFFu;
+        const char* nm = e->long_name[0] ? e->long_name : e->short_name;
+        strncpy(r.name, nm, sizeof(r.name) - 1);
+        r.name[sizeof(r.name) - 1] = 0;
+    }
+    if (rows_n_ < VISIBLE) seen_for_each_newest_first(&MeshtasticSeenView::visit_cb, this);
+}
+
+void MeshtasticSeenView::scroll_by(int delta) {
+    const size_t max_scroll = total_ > static_cast<size_t>(VISIBLE) ? total_ - VISIBLE : 0;
+    if (delta < 0)
+        scroll_ = scroll_ > static_cast<size_t>(-delta) ? scroll_ - static_cast<size_t>(-delta) : 0;
+    else
+        scroll_ = std::min(max_scroll, scroll_ + static_cast<size_t>(delta));
+    refresh_rows();
+    set_dirty();
+}
+
+bool MeshtasticSeenView::on_encoder(const EncoderEvent delta) {
+    scroll_by(delta > 0 ? 1 : -1);
+    return true;
+}
+
+bool MeshtasticSeenView::on_key(const KeyEvent key) {
+    if (key == KeyEvent::Up) {
+        if (scroll_ == 0) return false;  // at the top: let the focus go to the back arrow
+        scroll_by(-1);
+        return true;
+    }
+    if (key == KeyEvent::Down) {
+        scroll_by(1);
+        return true;
+    }
+    return false;
+}
+
+void MeshtasticSeenView::paint(Painter& painter) {
+    const auto& bg = Theme::getInstance()->bg_darkest->background;
+    const auto& hdr = *Theme::getInstance()->fg_light;
+    const auto r = screen_rect();
+    const int x0 = r.left();
+    const int y0 = r.top();
+    painter.fill_rectangle({x0, y0, screen_width, r.height()}, bg);
+    painter.draw_string({x0, y0}, hdr, "ID    Name          dBm  Age");
+    painter.draw_hline({x0, y0 + HDR_H - 2}, screen_width, hdr.foreground);
+
+    for (int i = 0; i < rows_n_; i++) {
+        const Row& row = rows_[i];
+        const int y = y0 + HDR_H + i * ROW_H;
+        std::string sig = row.rssi ? to_string_dec_int(row.rssi) : "--";
+        sig.resize(4, ' ');
+        std::string age = "--";
+        if (row.age_s != 0xFFFFFFFFu) {
+            if (row.age_s < 60)
+                age = to_string_dec_uint(row.age_s) + "s";
+            else if (row.age_s < 3600)
+                age = to_string_dec_uint(row.age_s / 60) + "m";
+            else if (row.age_s < 86400)
+                age = to_string_dec_uint(row.age_s / 3600) + "h";
+            else
+                age = to_string_dec_uint(row.age_s / 86400) + "d";
+        }
+        painter.draw_string({x0, y}, hdr, to_string_hex(row.id, 8).substr(4, 4));
+        draw_utf8({x0 + 5 * 8, y}, utf8_cols(row.name, 14), hdr.foreground, bg);
+        painter.draw_string({x0 + 20 * 8, y}, hdr, sig + " " + age);
+    }
+    painter.draw_string({x0, y0 + HDR_H + VISIBLE * ROW_H}, hdr,
+                        "Heard: " + to_string_dec_uint(static_cast<uint32_t>(total_)) + "  (" +
+                            to_string_dec_uint(static_cast<uint32_t>(scroll_ + 1)) + "-)");
 }
 
 // ============================================================================
@@ -5659,6 +5817,14 @@ MeshtasticView::MeshtasticView(NavigationView& nav)
 }
 
 MeshtasticView::~MeshtasticView() {
+    // The nodes still in memory go to the card too, so the All list survives a restart.
+    {
+        const uint32_t unix_now = now_unix();
+        for (size_t i = 0; i < node_db_.count(); i++) {
+            const NodeEntry* e = node_db_.at(i);
+            if (e && e->active && e->node_id) seen_put(NodeDB::make_record(*e, unix_now, uptime_ticks_));
+        }
+    }
     // Clear the models' enabled_ flags (not just radio::disable()). The models
     // are global singletons that outlive this view; leaving enabled_ set made
     // the NEXT launch's start_rx() set_*() calls message a shut-down M4 before
@@ -6165,7 +6331,13 @@ void MeshtasticView::on_timer() {
     mesh_text_entry_tick();
 
     uptime_ticks_++;
-    nodes_view_.set_now(uptime_ticks_);     // live "last heard" ages
+    nodes_view_.set_now(uptime_ticks_);  // live "last heard" ages
+    if ((uptime_ticks_ % 60u) == 0) {
+        // Date evictions and park the nodes the table pushed out on the SD card (see MeshtasticSeenView).
+        node_db_.set_clock(now_unix(), uptime_ticks_);
+        SeenRecord pending;
+        while (node_db_.take_evicted(pending)) seen_put(pending);
+    }
     chat_view_.tick(uptime_ticks_);         // age pending messages -> red on ACK timeout
     router_.set_hop_limit(cfg_.hop_limit);  // keep the Setup hop-limit applied to our TX
     router_.set_ok_to_mqtt(cfg_.mqtt_ok);

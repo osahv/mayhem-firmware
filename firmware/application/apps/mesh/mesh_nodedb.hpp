@@ -99,9 +99,50 @@ struct LocalStats {
     uint32_t heap_free{0}, heap_total{0};
 };
 
+// ---- Nodes that no longer fit in the table ---------------------------------------------------
+// The table keeps the freshest MAX_NODES nodes. An older one that is pushed out is not forgotten: it is parked in the
+// NodeDB until the owner writes it to the SD card, one fixed 64 byte record per node, so the "All" list can show every
+// node heard, not only the ones that fit in memory.
+struct SeenRecord {
+    uint32_t node_id;
+    uint32_t last_seen_unix;  // 0 = the clock was not set when it was heard
+    int8_t rssi;
+    int8_t snr_q4;  // quarter dB
+    uint8_t hw_model;
+    uint8_t role;
+    uint8_t hops;
+    uint8_t flags;  // bit 0: we hold its public key
+    char short_name[5];
+    char long_name[41];
+    uint8_t reserved[4];
+};
+static_assert(sizeof(SeenRecord) == 64, "SeenRecord is a fixed 64 byte record on the card");
+
+static constexpr size_t SEEN_MAX = 256;  // records in /LOGS/mesh_seen.bin (16 kB)
+
+// All of these take their memory with chHeapAlloc and give up quietly when there is none (see core_control.cpp: operator
+// new panics here). Safe to call from the timer; they never keep the file open.
+size_t seen_count();                            // records on the card
+bool seen_read(size_t index, SeenRecord& out);  // index 0 = oldest
+bool seen_put(const SeenRecord& rec);           // replaces the record with that id, else appends, else replaces the oldest
+// Calls fn for every record on the card, newest first (the file grows in eviction order), until fn returns false. One open file
+// and one 64 byte record on the stack, so it is safe wherever a repaint is.
+typedef bool (*SeenVisit)(const SeenRecord& rec, void* ctx);
+void seen_for_each_newest_first(SeenVisit fn, void* ctx);
+
 class NodeDB {
    public:
     NodeDB() { clear(); }
+
+    // The owner calls this about once a second so an entry pushed out of the table can be dated.
+    void set_clock(uint32_t unix_s, uint32_t uptime_ticks) {
+        clock_unix_ = unix_s;
+        clock_ticks_ = uptime_ticks;
+    }
+    // Pops one entry that was pushed out of the table (oldest first); false when there is none.
+    bool take_evicted(SeenRecord& out);
+    // A table entry as a card record, dated with the clock given (0 = unknown).
+    static SeenRecord make_record(const NodeEntry& e, uint32_t unix_now, uint32_t ticks_now);
 
     void clear();
 
@@ -166,6 +207,11 @@ class NodeDB {
     size_t active_count() const;
 
    private:
+    SeenRecord pending_[2]{};  // evictions are rare and the owner drains them about once a second
+    uint8_t pending_n_{0};
+    uint32_t clock_unix_{0};
+    uint32_t clock_ticks_{0};
+    void queue_evicted(const NodeEntry& e);
     std::array<NodeEntry, MAX_NODES> nodes_{};
     LocalStats last_stats_{};
     // Newest first, so a page can print them in the order they happened without
