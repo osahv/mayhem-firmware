@@ -16,73 +16,76 @@
 namespace meshtastic {
 
 // The whole node table lives in the app object, which sits in a 43 kB heap shared with
-// everything else the app allocates. Each entry costs 216 bytes, and the number is
-// chosen against the memory left rather than against ambition.
+// everything else the app allocates. The number of entries is chosen against the memory
+// left rather than against ambition.
 //
-// Twelve became ten for a measured reason. The map view needs 3736 bytes in one piece;
-// after a few screens have been opened and closed the heap holds around four kilobytes
-// but in two dozen fragments, so the request falls through to the unallocated core -
-// which stood at 3472. Two entries are 432 bytes, and they turn a map that refuses to
-// open into one that does. A handheld that can name ten neighbours and show them on a
-// map beats one that can name twelve and cannot.
-static constexpr size_t MAX_NODES = 10;
+// History: each entry cost 216 bytes and the table held twelve, then ten, for a measured
+// reason. The map view needs 3736 bytes in one piece; after a few screens have been
+// opened and closed the heap holds around four kilobytes but in two dozen fragments, so
+// the request falls through to the unallocated core - which stood at 3472. Two entries
+// are 432 bytes, and they turned a map that refuses to open into one that does.
+// An entry is now 152 bytes (measured with -Wpadded; see NodeEntry below), so fourteen
+// of them take 2128 bytes - slightly less than the ten used to.
+static constexpr size_t MAX_NODES = 14;
 
+// Members are ordered widest first and the sensor values are kept as small fixed-point
+// numbers (see Fixed in mesh_protocol.hpp), flags as bits: no padding, no wasted bytes.
+// Reading and writing a field looks exactly as before (they convert to and from float).
 struct NodeEntry {
     uint32_t node_id{0};
-    char long_name[41]{};
-    char short_name[5]{};
+    uint32_t last_seen_uptime{0};   // system uptime ticks at last packet
+    uint32_t first_seen_uptime{0};  // when we first heard this node, shown in its detail page
+    uint32_t uptime_seconds{0};     // DeviceMetrics extras
+    float lux{-1.0f};               // EnvironmentMetrics extra; can exceed a 16 bit range, so a float
     PositionData position{};
+
+    // Sensor values (-1 / -999 = unknown, as before), precision as shown on screen (one decimal).
+    Fixed<int16_t, 100> voltage{-1.0f};       // volts
+    Fixed<int16_t, 10> temperature{-999.0f};  // C
+    Fixed<int16_t, 10> humidity{-1.0f};       // %
+    Fixed<int16_t, 10> pressure{-1.0f};       // hPa
+    Fixed<int16_t, 100> channel_utilization{-1.0f};
+    Fixed<int16_t, 100> air_util_tx{-1.0f};
+    Fixed<int16_t, 10> gas_resistance{-1.0f};
+    uint16_t iaq{0};
+    uint16_t pm25{0}, pm10{0}, co2{0};  // AirQualityMetrics
+
     int8_t last_rssi{0};
-    float last_snr{0.0f};
-    uint32_t last_seen_uptime{0};  // system uptime ticks at last packet
+    Fixed<int8_t, 4> last_snr{0.0f};  // dB in quarter-dB steps, +-31.75
     uint8_t hop_count{0};
     // What this node last told the mesh about its own neighbours (portnum 71): how
     // many it hears directly, and - when we are one of them - the signal it hears US
     // at. That last figure is the half of the link our own receiver cannot measure.
-    bool unmessagable{false};  // the node says nobody reads messages on it
     uint8_t nbr_count{0};
-    bool nbr_hears_us{false};
-    float nbr_snr_to_us{0.0f};
-    bool active{false};
-    bool has_position{false};
-    float battery_level{-1.0f};  // -1 = unknown
-    float voltage{-1.0f};        // volts, -1 = unknown
-    float temperature{-999.0f};  // C, -999 = unknown
-    float humidity{-1.0f};       // %, -1 = unknown
-    float pressure{-1.0f};       // hPa, -1 = unknown
-    uint8_t hw_model{0};         // which board the node runs (mesh.proto HardwareModel)
-    uint8_t role{0};             // and in what role it advertises itself
-    uint8_t public_key[32]{};    // Curve25519 pubkey (NodeInfo field 8, for PKC DMs)
-    bool has_pubkey{false};
-    // A direct-message thread exists with this node (we messaged it, or it messaged
-    // us). Threads are listed next to the channels so a private conversation can be
-    // reopened without hunting through the node list.
-    bool dm_thread{false};
-
+    Fixed<int8_t, 4> nbr_snr_to_us{0.0f};
+    Fixed<int8_t, 1> battery_level{-1.0f};  // percent, 101 = charging, -1 = unknown
+    uint8_t hw_model{0};                    // which board the node runs (mesh.proto HardwareModel)
+    uint8_t role{0};                        // and in what role it advertises itself
     // Colour the chat marks this node's messages with, chosen in its detail page.
     // 0 = none, 1..7 index a small fixed palette.
     uint8_t colour{0};
 
-    // When we first heard this node (uptime ticks), shown in its detail page.
-    uint32_t first_seen_uptime{0};
+    bool unmessagable : 1;  // the node says nobody reads messages on it
+    bool nbr_hears_us : 1;
+    bool active : 1;
+    bool has_position : 1;
+    bool has_pubkey : 1;
+    // A direct-message thread exists with this node (we messaged it, or it messaged
+    // us). Threads are listed next to the channels so a private conversation can be
+    // reopened without hunting through the node list.
+    bool dm_thread : 1;
     // What the node has actually told us about itself, so the list can show an icon
     // per capability instead of columns that are blank for most nodes.
-    bool has_telemetry{false};  // any device metrics (battery / voltage)
-    bool has_env_data{false};   // temperature / humidity / pressure
-    bool has_air_data{false};   // particulate matter / CO2
-    bool has_stats{false};      // LocalStats from a "request stats" reply
+    bool has_telemetry : 1;  // any device metrics (battery / voltage)
+    bool has_env_data : 1;   // temperature / humidity / pressure
+    bool has_air_data : 1;   // particulate matter / CO2
+    bool has_stats : 1;      // LocalStats from a "request stats" reply
 
-    // DeviceMetrics extras
-    float channel_utilization{-1.0f};
-    float air_util_tx{-1.0f};
-    uint32_t uptime_seconds{0};
-    // EnvironmentMetrics extras
-    float gas_resistance{-1.0f};
-    float lux{-1.0f};
-    uint32_t iaq{0};
-    // AirQualityMetrics
-    uint16_t pm25{0}, pm10{0}, co2{0};
+    char long_name[41]{};
+    char short_name[5]{};
+    uint8_t public_key[32]{};  // Curve25519 pubkey (NodeInfo field 8, for PKC DMs)
 };
+static_assert(sizeof(NodeEntry) <= 156, "NodeEntry grew: the node table is sized for about 150 bytes per entry");
 
 // LocalStats is a snapshot a node sends when asked, and only the most recent answer is
 // of any interest - keeping eleven counters for every node in the table is not worth

@@ -273,9 +273,9 @@ bool PositionData::decode(const uint8_t* buf, size_t len, PositionData& out) {
             const uint32_t val = read_le32(buf + i);
             i += 4;
             if (field_num == 1) {
-                out.latitude = static_cast<int32_t>(val) * 1e-7;
+                out.latitude.raw = static_cast<int32_t>(val);
             } else if (field_num == 2) {
-                out.longitude = static_cast<int32_t>(val) * 1e-7;
+                out.longitude.raw = static_cast<int32_t>(val);
             } else if (field_num == 4) {
                 out.timestamp = val;
             }
@@ -302,11 +302,11 @@ size_t PositionData::encode(uint8_t* buf, size_t max_len) const {
     size_t i = 0;
     // field 1: latitude_i (sfixed32)
     buf[i++] = 0x0D;
-    write_le32(buf + i, static_cast<uint32_t>(static_cast<int32_t>(latitude * 1e7)));
+    write_le32(buf + i, static_cast<uint32_t>(latitude.raw));
     i += 4;
     // field 2: longitude_i (sfixed32)
     buf[i++] = 0x15;
-    write_le32(buf + i, static_cast<uint32_t>(static_cast<int32_t>(longitude * 1e7)));
+    write_le32(buf + i, static_cast<uint32_t>(longitude.raw));
     i += 4;
     // field 3: altitude (int32 varint; negatives sign-extend to 64-bit per proto)
     if (altitude_m != 0) {

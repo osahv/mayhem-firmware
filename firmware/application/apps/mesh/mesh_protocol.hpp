@@ -13,6 +13,7 @@
 #define __MESH_PROTOCOL_H__
 
 #include <cstdint>
+#include <limits>
 #include <cstring>
 #include <array>
 #include <string>
@@ -151,9 +152,55 @@ struct DecodedData {
 };
 
 // ---- Position message (portnum=3) ----------------------------------------
+// Compact storage helpers. Both convert to and from the plain type implicitly, so the code that reads and writes the
+// fields stays as it was; only the bytes per node database entry shrink.
+//  * Fixed<T, SCALE>: a float kept as a small integer (value * SCALE), saturating at the type's range.
+//  * Coord: a latitude/longitude kept as the 1e-7 degree integer it travels as on the wire.
+template <typename T, int SCALE>
+struct Fixed {
+    T raw{0};
+    constexpr Fixed() = default;
+    constexpr Fixed(float f)
+        : raw(to_raw(f)) {}
+    constexpr Fixed& operator=(float f) {
+        raw = to_raw(f);
+        return *this;
+    }
+    constexpr operator float() const { return static_cast<float>(raw) / static_cast<float>(SCALE); }
+
+   private:
+    static constexpr T to_raw(float f) {
+        const float s = f * static_cast<float>(SCALE);
+        const float lo = static_cast<float>(std::numeric_limits<T>::min());
+        const float hi = static_cast<float>(std::numeric_limits<T>::max());
+        return s <= lo   ? std::numeric_limits<T>::min()
+               : s >= hi ? std::numeric_limits<T>::max()
+                         : static_cast<T>(s >= 0.0f ? s + 0.5f : s - 0.5f);
+    }
+};
+
+struct Coord {
+    int32_t raw{0};  // degrees * 1e7
+    constexpr Coord() = default;
+    constexpr Coord(double d)
+        : raw(to_raw(d)) {}
+    constexpr Coord& operator=(double d) {
+        raw = to_raw(d);
+        return *this;
+    }
+    constexpr operator double() const { return static_cast<double>(raw) * 1e-7; }
+
+   private:
+    static constexpr int32_t to_raw(double d) {
+        const double s = d * 1e7;
+        return s <= -2147483648.0 ? INT32_MIN : s >= 2147483647.0 ? INT32_MAX
+                                                                  : static_cast<int32_t>(s >= 0.0 ? s + 0.5 : s - 0.5);
+    }
+};
+
 struct PositionData {
-    double latitude{0.0};
-    double longitude{0.0};
+    Coord latitude{};
+    Coord longitude{};
     int32_t altitude_m{0};
     uint32_t timestamp{0};
     uint8_t satellites_in_view{0};
